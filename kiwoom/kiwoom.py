@@ -23,6 +23,13 @@ class Kiwoom(QAxWidget):
         self.stock_counts = 2 # 거래할 종목 수
         self.account_stock_dict ={}
 
+        #### Screen number
+        self.screen_my_info = "2000"
+        self.screen_chart_data = "4000"
+
+
+
+
         ######################
 
         self.get_ocx_instance()
@@ -31,6 +38,10 @@ class Kiwoom(QAxWidget):
         self.get_account_info()
         self.detail_account_info()
         self.detail_account_mystock()
+
+        self.calculator_fnc() # 종목 분석용, 임시로 실행
+
+
 
     def get_ocx_instance(self):
         self.setControl('KHOPENAPI.KHOpenAPICtrl.1')
@@ -69,7 +80,7 @@ class Kiwoom(QAxWidget):
         self.dynamicCall("SetInputValue(String, String)","비밀번호","0000")
         self.dynamicCall("SetInputValue(String, String)","비밀번호입력매체구분","00")
         self.dynamicCall("SetInputValue(String, String)","조회구분","2")
-        self.dynamicCall("CommRqData(String, String, int, String)","예수금상세현황요청","opw00001","0","2000")
+        self.dynamicCall("CommRqData(String, String, int, String)","예수금상세현황요청","opw00001","0",self.screen_my_info)
 
         self.detail_account_info_event_loop = QEventLoop()
         self.detail_account_info_event_loop.exec_()
@@ -81,7 +92,7 @@ class Kiwoom(QAxWidget):
         self.dynamicCall("SetInputValue(String, String)","비밀번호","0000")
         self.dynamicCall("SetInputValue(String, String)","비밀번호입력매체구분","00")
         self.dynamicCall("SetInputValue(String, String)","조회구분","2")
-        self.dynamicCall("CommRqData(String, String, int, String)","계좌평가잔고내역요청","opw00018",sPrevNext,"2000")
+        self.dynamicCall("CommRqData(String, String, int, String)","계좌평가잔고내역요청","opw00018",sPrevNext,self.screen_my_info)
 
         
         self.detail_account_mystock_event_loop.exec_()
@@ -113,7 +124,7 @@ class Kiwoom(QAxWidget):
 
             self.detail_account_info_event_loop.exit()
 
-        if sRQName == "계좌평가잔고내역요청":
+        elif sRQName == "계좌평가잔고내역요청":
             total_buy_money = self.dynamicCall("GetCommData(String, String, int, String)",sTrCode,sRQName,0, "총매입금액")
             total_buy_money_result = int(total_buy_money)
             print("총 매입금액 %s" %total_buy_money_result)
@@ -164,7 +175,44 @@ class Kiwoom(QAxWidget):
             else:
                 self.detail_account_mystock_event_loop.exit()
 
+        elif sRQName == "주식일봉차트조회":
+            print("일봉데이터 요청")
 
+
+    def get_code_list_by_market(self, market_code):
+        '''
+        return stock code list
+        '''
+        
+        code_list = self.dynamicCall("GetCodeListByMarket(QString)",market_code)
+        code_list = code_list.split(";")[:-1]
+
+        return code_list
+
+
+    def calculator_fnc(self):
+        code_list = self.get_code_list_by_market("10")
+        print("코스닥 종목 수 %s" %len(code_list))
+
+        for idx,code in enumerate(code_list):
+            self.dynamicCall("DisconnectRealData(QString)",self.screen_chart_data)
+            print("%s / %s : KOSDAQ stock code : %s is updating..."%(idx+1,len(code_list),code))
+            
+            self.day_kiwoom_db(code=code)
+
+    def day_kiwoom_db(self, code=None, date=None, sPrevNext = "0"):
+        self.dynamicCall("SetInputValue(QString, QString)", "종목코드", code)
+        self.dynamicCall("SetInputValue(QString, QString)", "수정주가구분", "1")
+
+        if date != None:
+            self.dynamicCall("SetInputValue(QString, QString)", "기준일자", date)
+
+
+        self.dynamicCall("CommRqData(QString, QString, int, QString)","주식일봉차트조회","opw10081",sPrevNext,self.screen_chart_data)
+
+
+
+        
 
             
 
