@@ -11,17 +11,26 @@ class Kiwoom(QAxWidget):
 
         ###### Event loops
         self.login_event_loop = None
+        self.detail_account_info_event_loop = None
+        self.detail_account_mystock_event_loop = None
+        self.detail_account_mystock_event_loop = QEventLoop()    
         ########
+
         #### Variables
-
         self.account_num = None
+        self.use_money = 0
+        self.use_money_rate = 0.5 #예수금 사용 비율
+        self.stock_counts = 2 # 거래할 종목 수
+        self.account_stock_dict ={}
 
+        ######################
 
         self.get_ocx_instance()
         self.event_slots()
         self.signal_login_commConnect()
         self.get_account_info()
         self.detail_account_info()
+        self.detail_account_mystock()
 
     def get_ocx_instance(self):
         self.setControl('KHOPENAPI.KHOpenAPICtrl.1')
@@ -62,6 +71,20 @@ class Kiwoom(QAxWidget):
         self.dynamicCall("SetInputValue(String, String)","조회구분","2")
         self.dynamicCall("CommRqData(String, String, int, String)","예수금상세현황요청","opw00001","0","2000")
 
+        self.detail_account_info_event_loop = QEventLoop()
+        self.detail_account_info_event_loop.exec_()
+
+
+    def detail_account_mystock(self,sPrevNext="0") :
+        print("계좌평가 잔고내역 요청 부분")
+        self.dynamicCall("SetInputValue(String, String)","계좌번호",self.account_num)
+        self.dynamicCall("SetInputValue(String, String)","비밀번호","0000")
+        self.dynamicCall("SetInputValue(String, String)","비밀번호입력매체구분","00")
+        self.dynamicCall("SetInputValue(String, String)","조회구분","2")
+        self.dynamicCall("CommRqData(String, String, int, String)","계좌평가잔고내역요청","opw00018",sPrevNext,"2000")
+
+        
+        self.detail_account_mystock_event_loop.exec_()
 
     def trdata_slot(self,sScrNo, sRQName,sTrCode,SRecordName,sPrevNext):
         '''
@@ -76,8 +99,73 @@ class Kiwoom(QAxWidget):
             deposit = self.dynamicCall("GetCommData(String, String, int, String)",sTrCode,sRQName,0, "예수금")
             print('예수금 %s' % int(deposit))
 
+            self.use_money = int(deposit) * self.use_money_rate
+            self.use_money = self.use_money * self.stock_counts
+
+
+
+
             ok_deposit = self.dynamicCall("GetCommData(String, String, int, String)",sTrCode,sRQName,0, "출금가능금액")
             print(ok_deposit)
 
             joomoon = self.dynamicCall("GetCommData(String, String, int, String)",sTrCode,sRQName,0, "주문가능금액")
             print("주문가능금액 %s"% int(joomoon))
+
+            self.detail_account_info_event_loop.exit()
+
+        if sRQName == "계좌평가잔고내역요청":
+            total_buy_money = self.dynamicCall("GetCommData(String, String, int, String)",sTrCode,sRQName,0, "총매입금액")
+            total_buy_money_result = int(total_buy_money)
+            print("총 매입금액 %s" %total_buy_money_result)
+
+            total_profit_loss_rate = self.dynamicCall("GetCommData(String, String, int, String)",sTrCode,sRQName,0, "총수익률(%)")
+            total_profit_loss_rate_result = float(total_profit_loss_rate)
+            print("총 수익률 %s" %total_profit_loss_rate_result)
+
+            rows = self.dynamicCall("GetRepeatCnt(QString, QString)",sTrCode,sRQName)
+            cnt = 0
+            for i in range(rows):
+                stock_code = self.dynamicCall("GetCommData(QString, QString, int, QString)",sTrCode,sRQName,i,"종목번호")
+                stock_name = self.dynamicCall("GetCommData(QString, QString, int, QString)",sTrCode,sRQName,i,"종목명")                
+                stock_margin = self.dynamicCall("GetCommData(QString, QString, int, QString)",sTrCode,sRQName,i,"평가손익")
+                stock_profit = self.dynamicCall("GetCommData(QString, QString, int, QString)",sTrCode,sRQName,i,"수익률(%)")
+                stock_buy_price = self.dynamicCall("GetCommData(QString, QString, int, QString)",sTrCode,sRQName,i,"매입가")
+                stock_quntity = self.dynamicCall("GetCommData(QString, QString, int, QString)",sTrCode,sRQName,i,"보유수량")
+                stock_avail_quantity = self.dynamicCall("GetCommData(QString, QString, int, QString)",sTrCode,sRQName,i,"매매가능수량")
+                stock_total_cost = self.dynamicCall("GetCommData(QString, QString, int, QString)",sTrCode,sRQName,i,"수수료합")
+
+                stock_code = stock_code.strip()[1:]
+                stock_name = stock_name.strip()
+                stock_margin = int(stock_margin.strip())
+                stock_profit = float(stock_profit.strip())
+                stock_buy_price = int(stock_buy_price.strip())
+                stock_quntity = int(stock_quntity.strip())
+                stock_avail_quantity = int(stock_avail_quantity.strip())
+                stock_total_cost = int(stock_total_cost.strip())
+
+                if stock_code in self.account_stock_dict:
+                    pass
+                else:
+                    self.account_stock_dict[stock_code]={}
+                    self.account_stock_dict[stock_code]['종목명'] = stock_name
+                    self.account_stock_dict[stock_code]['평가손익'] = stock_margin
+                    self.account_stock_dict[stock_code]['수익률(%)'] = stock_profit
+                    self.account_stock_dict[stock_code]['매입가'] = stock_buy_price
+                    self.account_stock_dict[stock_code]['보유수량'] = stock_quntity
+                    self.account_stock_dict[stock_code]['매매가능수량'] =stock_avail_quantity
+                    self.account_stock_dict[stock_code]['수수료합'] = stock_total_cost
+
+                    cnt+=1
+            print("계좌에 가지고 있는 종목 수 : %s" %cnt)
+            print(self.account_stock_dict)
+
+            if sPrevNext =="2":
+                self.detail_account_mystock(sPrevNext="2")
+            else:
+                self.detail_account_mystock_event_loop.exit()
+
+
+
+            
+
+
