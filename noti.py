@@ -1,4 +1,4 @@
-from ui.ui import *
+from ui.ui_noti import *
 
 class Main():
     def __init__(self):
@@ -8,4 +8,3 @@ class Main():
 if __name__ == "__main__":
     
     Main()
-    
